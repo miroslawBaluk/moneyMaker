@@ -1,0 +1,5 @@
+loan:
+  maxAmount: 1000000
+  minAmount: 1000
+  maxDays: 10950
+  minDays: 30
