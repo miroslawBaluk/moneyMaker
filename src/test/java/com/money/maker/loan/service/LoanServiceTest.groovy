@@ -1,66 +1,70 @@
 package com.money.maker.loan.service
 
-import com.money.maker.loan.LoanException
+import com.money.maker.loan.converter.LoanToViewConverter
+import com.money.maker.loan.domain.Loan
+import com.money.maker.loan.dto.LoanView
 import com.money.maker.loan.properties.LoanProperties
 import com.money.maker.loan.repository.LoanRepository
 import com.money.maker.loan.validator.LoanValidator
 import com.money.maker.utils.CurrentDateTimeCatcher
 import spock.lang.Specification
 
+import java.math.RoundingMode
+import java.time.LocalDate
+import java.time.LocalDateTime
+
 class LoanServiceTest extends Specification {
 
-
-    private LoanValidator loanValidator;
-    private LoanRepository loanRepository;
-    private CurrentDateTimeCatcher currentDateTimeCatcher;
-
     private LoanProperties loanProperties = buildLoanProperties()
+    private LoanValidator loanValidator = new LoanValidator(loanProperties)
+    private LoanRepository loanRepository = Mock LoanRepository
+    private CurrentDateTimeCatcher currentDateTimeCatcher = Mock CurrentDateTimeCatcher
+    private LoanToViewConverter loanToViewConverter = new LoanToViewConverter()
+    private LoanService loanService = new LoanService(loanValidator, loanRepository,
+            currentDateTimeCatcher, loanToViewConverter)
 
-
-    private LoanService loanService = new LoanService(loanProperties)
-
-    void setup() {
-
-    }
-
-
-    def "should create torch or return sad icon"() {
+    def "should apply for loan"() {
         given:
-
+        currentDateTimeCatcher.getCurrentDateTime() >> LocalDateTime.now()
         when:
         loanService.applyForLoan(term, amount)
         then:
-        LoanException ex = thrown()
-        ex.message == message
-
+        1 * loanRepository.save(_ as Loan) >> getLoan()
         where:
-        term   | amount                      | message
-        100000 | BigDecimal.valueOf(100.10)  | amount + " Amount is lower then minimal"
-        100000 | BigDecimal.valueOf(10001)   | amount + " Amount is higher then maximal"
-        1      | BigDecimal.valueOf(1000.20) | term + " Term is lower then minimal"
-        100001 | BigDecimal.valueOf(1000.20) | term + " Term is higher then maximal"
-
-//
-//        throw new LoanException(amount + " Amount is too high");
-//    }
-//    if(isMinAmountLower( amount)){
-//        throw new LoanException(amount + " Amount is too low");
-//    }
-//    if(isTimeBetween( ZonedDateTime.now(ZoneId.systemDefault())) ){
-//        throw new LoanException("Time is between 00:00 and 6:00");
-
-//        int term, BigDecimal amount
-//        elementsList            | term       |
-//        elementsFormingTorch()  | "Torch!"
-//        elementsFormingTorch2() | "Torch!"
-//        emptyElements()         | ":-("
-//        tooManyElements()       | ":-("
-//        badCombination()        | ":-("
-//        duplicated()            | ":-("
-//        tooLongDistance()       | ":-("
-//        outsideTheOneXaxis()    | ":-("
+        term   | amount
+        1000   | BigDecimal.valueOf(1000.20)
+        100000 | BigDecimal.valueOf(10000.20)
     }
 
+
+    def "should extend a loan"() {
+        given:
+        loanRepository.findOne(_ as Long) >> getLoan()
+        currentDateTimeCatcher.getCurrentDateTime() >> LocalDateTime.now()
+        when:
+        LoanView loanView = loanService.extendLoan(1, extensionTerm)
+        then:
+        loanView.getId() == 1
+        loanView.getEndDate() == getLoan().endDate.plusDays(extensionTerm)
+        loanView.getExtendedInstallment() == extendedInstallment
+        loanView.getEndDate() == endDate
+        where:
+        extensionTerm | extendedInstallment        | endDate
+        20            | BigDecimal.valueOf(1000)   | getLoan().endDate.plusDays(20)
+        32            | BigDecimal.valueOf(909.09) | getLoan().endDate.plusDays(32)
+        70            | BigDecimal.valueOf(833.33) | getLoan().endDate.plusDays(70)
+        100           | BigDecimal.valueOf(769.23) | getLoan().endDate.plusDays(100)
+    }
+
+    private static Loan getLoan() {
+        return Loan.builder()
+                .id(1)
+                .startDate(LocalDate.now().minusMonths(10))
+                .endDate(LocalDate.now().plusMonths(10))
+                .installment(new BigDecimal(1000).setScale(2, RoundingMode.HALF_EVEN))
+                .amount(new BigDecimal(20000).setScale(2, RoundingMode.HALF_EVEN))
+                .build()
+    }
 
     private static LoanProperties buildLoanProperties() {
         return LoanProperties.builder()
@@ -68,35 +72,8 @@ class LoanServiceTest extends Specification {
                 .minAmount(BigDecimal.valueOf(1000.20))
                 .maxDays(100000)
                 .minDays(1000)
+                .maxLoanExtensionTerm(1000)
+                .minLoanExtensionTerm(20)
                 .build()
     }
-
-//
-//    @Mock
-//    private LoanProperties loanProperties;
-//    @InjectMocks
-//    private LoanService loanService;
-//
-//
-//    @Test
-//    public void calculator_returns_windless_time() {
-//        //given
-//        when(loanProperties.getMaxAmount()).thenReturn(new BigDecimal(10000.20));
-//        when(loanProperties.getMinAmount()).thenReturn(new BigDecimal(1000.20));
-//        when(loanProperties.getMaxDays()).thenReturn(100000);
-//        when(loanProperties.getMinDays()).thenReturn(30);
-//        //when
-//        loanService.applyForLoan(30, new BigDecimal(1000));
-//        //then
-//        assertEquals(Double.valueOf(15.0), downtimeData.getEnd());
-//    }
-//
-//
-//
-//
-//    @NotNull
-//    private CurtailmentData getLoanProperties() {
-//
-//    }
-
 }

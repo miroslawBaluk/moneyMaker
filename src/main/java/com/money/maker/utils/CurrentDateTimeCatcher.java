@@ -9,7 +9,6 @@ public class CurrentDateTimeCatcher {
 
     public LocalDateTime getCurrentDateTime(){
         return LocalDateTime.now();
-
     }
 
 }

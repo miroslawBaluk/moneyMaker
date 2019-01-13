@@ -1,8 +1,9 @@
 package com.money.maker.loan.rest;
 
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.money.maker.loan.converter.LoanToViewConverter;
+import com.money.maker.loan.domain.Loan;
 import com.money.maker.loan.dto.LoanView;
 import com.money.maker.loan.repository.LoanRepository;
 import com.money.maker.loan.service.LoanService;
@@ -35,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @RunWith(SpringRunner.class)
 @SpringBootTest
 @ContextConfiguration(classes = {LoanValidator.class, LoanRepository.class, CurrentDateTimeCatcher.class,
-        LoanRepository.class, LoanController.class, LoanService.class})
+        LoanRepository.class, LoanController.class, LoanService.class, LoanToViewConverter.class})
 @DataJpaTest
 @EnableConfigurationProperties
 @EnableJpaRepositories("com.money.maker")
@@ -48,6 +49,9 @@ public class LoanRestTest {
 
     @Autowired
     private LoanController loanController;
+
+    @Autowired
+    private LoanRepository loanRepository;
 
     @Before
     public void setUp() {
@@ -68,17 +72,35 @@ public class LoanRestTest {
                 .isOk())
                 .andReturn().getResponse().getContentAsString());
 
-
-        assertThat(result.getPrincipalAmount()).isEqualTo(BigDecimal.valueOf(2200.00).setScale(2, RoundingMode.HALF_EVEN));
+        assertThat(result.getAmount()).isEqualTo(BigDecimal.valueOf(2200.00).setScale(2, RoundingMode.HALF_EVEN));
         assertThat(result.getId()).isNotNull();
-        assertThat(result.getStartDate().toLocalDate()).isEqualByComparingTo(LocalDate.now());
+        assertThat(result.getStartDate()).isEqualByComparingTo(LocalDate.now());
         assertThat(result.getEndDate()).isEqualByComparingTo(LocalDate.now().plusDays(100));
         assertThat(result.getInstallment()).isEqualTo(BigDecimal.valueOf(733.33).setScale(2, RoundingMode.HALF_EVEN));
     }
 
     @Test
-    public void shouldReturn400OnValidationError() throws Exception {
+    public void shouldApplyForLoan2() throws Exception {
 
+        LoanView result = toLoanView(mockMvc.perform(
+                MockMvcRequestBuilders.post("/loan")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .param("term", "100")
+                        .param("amount", BigDecimal.valueOf(3000).toString())
+        ).andExpect(MockMvcResultMatchers.status()
+                .isOk())
+                .andReturn().getResponse().getContentAsString());
+
+        assertThat(result.getAmount()).isEqualTo(BigDecimal.valueOf(3300.00).setScale(2, RoundingMode.HALF_EVEN));
+        assertThat(result.getId()).isNotNull();
+        assertThat(result.getStartDate()).isEqualByComparingTo(LocalDate.now());
+        assertThat(result.getEndDate()).isEqualByComparingTo(LocalDate.now().plusDays(100));
+        assertThat(result.getInstallment()).isEqualTo(BigDecimal.valueOf(1100.00).setScale(2, RoundingMode.HALF_EVEN));
+    }
+
+    @Test
+    public void shouldReturn400validationErrorOnApplyForLoan() throws Exception {
         mockMvc.perform(
                 MockMvcRequestBuilders.post("/loan")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -86,14 +108,67 @@ public class LoanRestTest {
                         .param("term", "10")
                         .param("amount", BigDecimal.valueOf(2000).toString())
         ).andExpect(MockMvcResultMatchers.status()
-                .isBadRequest())
-                .andReturn().getResponse().getContentAsString();
+                .isBadRequest());
     }
 
-    private LoanView toLoanView(String x) throws IOException {
-        return objectMapper.readValue(x, LoanView.class);
+    @Test
+    public void shouldExtendLoanTerm() throws Exception {
+        Long loanId = loanRepository.save(getLoan()).getId();
+        LoanView result = toLoanView(mockMvc.perform(
+                MockMvcRequestBuilders.put("/loan/" + loanId + "/extend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .param("extensionTerm", "100")
+        ).andExpect(MockMvcResultMatchers.status()
+                .isOk())
+                .andReturn().getResponse().getContentAsString());
 
+        assertThat(result.getEndDate()).isEqualByComparingTo(getLoan().getEndDate().plusDays(100));
+        assertThat(result.getExtendedInstallment()).isEqualTo(BigDecimal.valueOf(5000).setScale(2, RoundingMode.HALF_EVEN));
     }
 
+    @Test
+    public void shouldReturn400validationErrorOnExtendLoanTerm() throws Exception {
+        Long loanId = loanRepository.save(getLoan()).getId();
+        mockMvc.perform(
+                MockMvcRequestBuilders.put("/loan/" + loanId + "/extend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .param("extensionTerm", "2001")
+        ).andExpect(MockMvcResultMatchers.status()
+                .isBadRequest());
+    }
 
+    @Test
+    public void shouldReturn400validationErrorOnTwiceExtendLoanTerm() throws Exception {
+        Long loanId = loanRepository.save(getLoan()).getId();
+        mockMvc.perform(
+                MockMvcRequestBuilders.put("/loan/" + loanId + "/extend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .param("extensionTerm", "100")
+        ).andExpect(MockMvcResultMatchers.status()
+                .isOk());
+
+        mockMvc.perform(
+                MockMvcRequestBuilders.put("/loan/" + loanId + "/extend")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.APPLICATION_JSON)
+                        .param("extensionTerm", "100")
+        ).andExpect(MockMvcResultMatchers.status()
+                .isBadRequest());
+    }
+
+    private LoanView toLoanView(String loanViewString) throws IOException {
+        return objectMapper.readValue(loanViewString, LoanView.class);
+    }
+
+    private Loan getLoan() {
+        return Loan.builder()
+                .startDate(LocalDate.now().minusMonths(3))
+                .endDate(LocalDate.now().plusMonths(3))
+                .amount(BigDecimal.valueOf(60000))
+                .installment(BigDecimal.valueOf(10000))
+                .build();
+    }
 }

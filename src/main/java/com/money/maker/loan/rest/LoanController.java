@@ -19,4 +19,9 @@ public class LoanController {
     public LoanView applyForLoan(@RequestParam() int term, @RequestParam() BigDecimal amount) {
         return loanService.applyForLoan(term, amount);
     }
+
+    @RequestMapping(value = "/loan/{loanId}/extend", method = RequestMethod.PUT)
+    public LoanView extendLoanTerm(@PathVariable Long loanId, @RequestParam int extensionTerm) {
+        return loanService.extendLoan(loanId, extensionTerm);
+    }
 }

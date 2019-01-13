@@ -3,3 +3,5 @@ loan:
   minAmount: 1000
   maxDays: 10950
   minDays: 30
+  minLoanExtensionTerm: 32
+  maxLoanExtensionTerm: 2000
